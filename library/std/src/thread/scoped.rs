@@ -1,3 +1,5 @@
+use core::marker::Leak;
+
 use super::{Builder, JoinInner, Result, Thread, current_or_unnamed};
 use crate::marker::PhantomData;
 use crate::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
@@ -32,7 +34,7 @@ pub struct Scope<'scope, 'env: 'scope> {
 ///
 /// See [`Scope::spawn`] for details.
 #[stable(feature = "scoped_threads", since = "1.63.0")]
-pub struct ScopedJoinHandle<'scope, T>(JoinInner<'scope, T>);
+pub struct ScopedJoinHandle<'scope, T: Leak>(JoinInner<'scope, T>);
 
 pub(super) struct ScopeData {
     num_running_threads: AtomicUsize,
@@ -192,7 +194,7 @@ impl<'scope, 'env> Scope<'scope, 'env> {
     ///
     /// [`join`]: ScopedJoinHandle::join
     #[stable(feature = "scoped_threads", since = "1.63.0")]
-    pub fn spawn<F, T>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
+    pub fn spawn<F, T: Leak>(&'scope self, f: F) -> ScopedJoinHandle<'scope, T>
     where
         F: FnOnce() -> T + Send + 'scope,
         T: Send + 'scope,
@@ -256,13 +258,13 @@ impl Builder {
     ) -> io::Result<ScopedJoinHandle<'scope, T>>
     where
         F: FnOnce() -> T + Send + 'scope,
-        T: Send + 'scope,
+        T: Send + Leak + 'scope,
     {
         Ok(ScopedJoinHandle(unsafe { self.spawn_unchecked_(f, Some(scope.data.clone())) }?))
     }
 }
 
-impl<'scope, T> ScopedJoinHandle<'scope, T> {
+impl<'scope, T: Leak> ScopedJoinHandle<'scope, T> {
     /// Extracts a handle to the underlying thread.
     ///
     /// # Examples
@@ -342,7 +344,7 @@ impl fmt::Debug for Scope<'_, '_> {
 }
 
 #[stable(feature = "scoped_threads", since = "1.63.0")]
-impl<'scope, T> fmt::Debug for ScopedJoinHandle<'scope, T> {
+impl<'scope, T: Leak> fmt::Debug for ScopedJoinHandle<'scope, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScopedJoinHandle").finish_non_exhaustive()
     }

@@ -9,6 +9,7 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+use core::marker::Leak;
 use core::panic::{Location, PanicPayload};
 
 // make sure to use the stderr output configured
@@ -87,12 +88,12 @@ extern "C" fn __rust_foreign_exception() -> ! {
 enum Hook {
     #[default]
     Default,
-    Custom(Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>),
+    Custom(Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send + Leak>),
 }
 
 impl Hook {
     #[inline]
-    fn into_box(self) -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+    fn into_box(self) -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send + Leak> {
         match self {
             Hook::Default => Box::new(default_hook),
             Hook::Custom(hook) => hook,
@@ -139,7 +140,7 @@ static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
 /// panic!("Normal panic");
 /// ```
 #[stable(feature = "panic_hooks", since = "1.10.0")]
-pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
+pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send + Leak>) {
     if thread::panicking() {
         panic!("cannot modify the panic hook from a panicking thread");
     }
@@ -183,7 +184,7 @@ pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
 /// ```
 #[must_use]
 #[stable(feature = "panic_hooks", since = "1.10.0")]
-pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
+pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send + Leak> {
     if thread::panicking() {
         panic!("cannot modify the panic hook from a panicking thread");
     }
@@ -232,6 +233,7 @@ where
     F: Fn(&(dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static), &PanicHookInfo<'_>)
         + Sync
         + Send
+        + Leak
         + 'static,
 {
     if thread::panicking() {

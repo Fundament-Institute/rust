@@ -2,6 +2,8 @@
 
 #![stable(feature = "io_safety", since = "1.63.0")]
 
+use core::marker::Leak;
+
 use super::raw::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
 use crate::marker::PhantomData;
 use crate::mem::ManuallyDrop;
@@ -470,7 +472,7 @@ impl<T: AsHandle + ?Sized> AsHandle for &mut T {
 /// impl MyTrait for Box<File> {}
 /// # }
 /// ```
-impl<T: AsHandle + ?Sized> AsHandle for crate::sync::Arc<T> {
+impl<T: AsHandle + ?Sized + Leak> AsHandle for crate::sync::Arc<T> {
     #[inline]
     fn as_handle(&self) -> BorrowedHandle<'_> {
         (**self).as_handle()
@@ -478,7 +480,7 @@ impl<T: AsHandle + ?Sized> AsHandle for crate::sync::Arc<T> {
 }
 
 #[stable(feature = "as_windows_ptrs", since = "1.71.0")]
-impl<T: AsHandle + ?Sized> AsHandle for crate::rc::Rc<T> {
+impl<T: AsHandle + ?Sized + Leak> AsHandle for crate::rc::Rc<T> {
     #[inline]
     fn as_handle(&self) -> BorrowedHandle<'_> {
         (**self).as_handle()
@@ -486,7 +488,7 @@ impl<T: AsHandle + ?Sized> AsHandle for crate::rc::Rc<T> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: AsHandle + ?Sized> AsHandle for crate::rc::UniqueRc<T> {
+impl<T: AsHandle + ?Sized + Leak> AsHandle for crate::rc::UniqueRc<T> {
     #[inline]
     fn as_handle(&self) -> BorrowedHandle<'_> {
         (**self).as_handle()
@@ -646,7 +648,7 @@ impl From<crate::process::ChildStderr> for OwnedHandle {
 }
 
 #[stable(feature = "io_safety", since = "1.63.0")]
-impl<T> AsHandle for crate::thread::JoinHandle<T> {
+impl<T: Leak> AsHandle for crate::thread::JoinHandle<T> {
     #[inline]
     fn as_handle(&self) -> BorrowedHandle<'_> {
         unsafe { BorrowedHandle::borrow_raw(self.as_raw_handle()) }
@@ -654,7 +656,7 @@ impl<T> AsHandle for crate::thread::JoinHandle<T> {
 }
 
 #[stable(feature = "io_safety", since = "1.63.0")]
-impl<T> From<crate::thread::JoinHandle<T>> for OwnedHandle {
+impl<T: Leak> From<crate::thread::JoinHandle<T>> for OwnedHandle {
     #[inline]
     fn from(join_handle: crate::thread::JoinHandle<T>) -> OwnedHandle {
         join_handle.into_inner().into_handle().into_inner()

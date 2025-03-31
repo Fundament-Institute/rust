@@ -2,6 +2,8 @@
 
 #![stable(feature = "io_safety", since = "1.63.0")]
 
+use core::marker::Leak;
+
 use super::raw::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 use crate::marker::PhantomData;
 use crate::mem::{self, ManuallyDrop};
@@ -251,7 +253,7 @@ impl<T: AsSocket> AsSocket for &mut T {
 /// impl MyTrait for Box<UdpSocket> {}
 /// # }
 /// ```
-impl<T: AsSocket> AsSocket for crate::sync::Arc<T> {
+impl<T: AsSocket + Leak> AsSocket for crate::sync::Arc<T> {
     #[inline]
     fn as_socket(&self) -> BorrowedSocket<'_> {
         (**self).as_socket()
@@ -259,7 +261,7 @@ impl<T: AsSocket> AsSocket for crate::sync::Arc<T> {
 }
 
 #[stable(feature = "as_windows_ptrs", since = "1.71.0")]
-impl<T: AsSocket> AsSocket for crate::rc::Rc<T> {
+impl<T: AsSocket + Leak> AsSocket for crate::rc::Rc<T> {
     #[inline]
     fn as_socket(&self) -> BorrowedSocket<'_> {
         (**self).as_socket()
@@ -267,7 +269,7 @@ impl<T: AsSocket> AsSocket for crate::rc::Rc<T> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: AsSocket + ?Sized> AsSocket for crate::rc::UniqueRc<T> {
+impl<T: AsSocket + ?Sized + Leak> AsSocket for crate::rc::UniqueRc<T> {
     #[inline]
     fn as_socket(&self) -> BorrowedSocket<'_> {
         (**self).as_socket()

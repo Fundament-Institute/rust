@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![feature(leak)]
 
 use std::cell::RefCell;
 use std::panic::{AssertUnwindSafe, UnwindSafe};
@@ -44,7 +45,7 @@ fn panic_safety_traits() {
         assert::<RwLock<T>>();
     }
 
-    fn baz<T: UnwindSafe>() {
+    fn baz<T: UnwindSafe + core::marker::Leak>() {
         assert::<Box<T>>();
         assert::<Vec<T>>();
         assert::<RefCell<T>>();

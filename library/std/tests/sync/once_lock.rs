@@ -4,7 +4,9 @@ use std::sync::atomic::Ordering::SeqCst;
 use std::sync::mpsc::channel;
 use std::{panic, thread};
 
-fn spawn_and_wait<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> R {
+fn spawn_and_wait<R: std::marker::Leak + Send + 'static>(
+    f: impl FnOnce() -> R + Send + 'static,
+) -> R {
     thread::spawn(f).join().unwrap()
 }
 

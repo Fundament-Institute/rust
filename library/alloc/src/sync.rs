@@ -17,7 +17,7 @@ use core::hash::{Hash, Hasher};
 use core::intrinsics::abort;
 #[cfg(not(no_global_oom_handling))]
 use core::iter;
-use core::marker::{PhantomData, Unsize};
+use core::marker::{Leak, PhantomData, Unsize};
 use core::mem::{self, ManuallyDrop, align_of_val_raw};
 use core::num::NonZeroUsize;
 use core::ops::{CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn, LegacyReceiver};
@@ -259,7 +259,7 @@ macro_rules! acquire {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_insignificant_dtor]
 pub struct Arc<
-    T: ?Sized,
+    T: ?Sized + Leak,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
 > {
     ptr: NonNull<ArcInner<T>>,
@@ -268,20 +268,23 @@ pub struct Arc<
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Send> Send for Arc<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Send> Send for Arc<T, A> {}
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Sync> Sync for Arc<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Sync> Sync for Arc<T, A> {}
 
 #[stable(feature = "catch_unwind", since = "1.9.0")]
-impl<T: RefUnwindSafe + ?Sized, A: Allocator + UnwindSafe> UnwindSafe for Arc<T, A> {}
+impl<T: RefUnwindSafe + ?Sized + Leak, A: Allocator + UnwindSafe> UnwindSafe for Arc<T, A> {}
 
 #[unstable(feature = "coerce_unsized", issue = "18598")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized, A: Allocator> CoerceUnsized<Arc<U, A>> for Arc<T, A> {}
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak, A: Allocator> CoerceUnsized<Arc<U, A>>
+    for Arc<T, A>
+{
+}
 
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Arc<U>> for Arc<T> {}
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak> DispatchFromDyn<Arc<U>> for Arc<T> {}
 
-impl<T: ?Sized> Arc<T> {
+impl<T: ?Sized + Leak> Arc<T> {
     unsafe fn from_inner(ptr: NonNull<ArcInner<T>>) -> Self {
         unsafe { Self::from_inner_in(ptr, Global) }
     }
@@ -291,7 +294,7 @@ impl<T: ?Sized> Arc<T> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Arc<T, A> {
     #[inline]
     fn into_inner_with_allocator(this: Self) -> (NonNull<ArcInner<T>>, A) {
         let this = mem::ManuallyDrop::new(this);
@@ -334,7 +337,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
 #[stable(feature = "arc_weak", since = "1.4.0")]
 #[rustc_diagnostic_item = "ArcWeak"]
 pub struct Weak<
-    T: ?Sized,
+    T: ?Sized + Leak,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
 > {
     // This is a `NonNull` to allow optimizing the size of this type in enums,
@@ -348,17 +351,20 @@ pub struct Weak<
 }
 
 #[stable(feature = "arc_weak", since = "1.4.0")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Send> Send for Weak<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Send> Send for Weak<T, A> {}
 #[stable(feature = "arc_weak", since = "1.4.0")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Sync> Sync for Weak<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Sync> Sync for Weak<T, A> {}
 
 #[unstable(feature = "coerce_unsized", issue = "18598")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized, A: Allocator> CoerceUnsized<Weak<U, A>> for Weak<T, A> {}
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak, A: Allocator> CoerceUnsized<Weak<U, A>>
+    for Weak<T, A>
+{
+}
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Weak<U>> for Weak<T> {}
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak> DispatchFromDyn<Weak<U>> for Weak<T> {}
 
 #[stable(feature = "arc_weak", since = "1.4.0")]
-impl<T: ?Sized, A: Allocator> fmt::Debug for Weak<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> fmt::Debug for Weak<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(Weak)")
     }
@@ -368,7 +374,7 @@ impl<T: ?Sized, A: Allocator> fmt::Debug for Weak<T, A> {
 // would interfere with otherwise safe [into|from]_raw() of transmutable
 // inner types.
 #[repr(C)]
-struct ArcInner<T: ?Sized> {
+struct ArcInner<T: ?Sized + Leak> {
     strong: atomic::AtomicUsize,
 
     // the value usize::MAX acts as a sentinel for temporarily "locking" the
@@ -388,10 +394,10 @@ fn arcinner_layout_for_value_layout(layout: Layout) -> Layout {
     Layout::new::<ArcInner<()>>().extend(layout).unwrap().0.pad_to_align()
 }
 
-unsafe impl<T: ?Sized + Sync + Send> Send for ArcInner<T> {}
-unsafe impl<T: ?Sized + Sync + Send> Sync for ArcInner<T> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send> Send for ArcInner<T> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send> Sync for ArcInner<T> {}
 
-impl<T> Arc<T> {
+impl<T: Leak> Arc<T> {
     /// Constructs a new `Arc<T>`.
     ///
     /// # Examples
@@ -649,7 +655,7 @@ impl<T> Arc<T> {
     }
 }
 
-impl<T, A: Allocator> Arc<T, A> {
+impl<T: Leak, A: Allocator> Arc<T, A> {
     /// Constructs a new `Arc<T>` in the provided allocator.
     ///
     /// # Examples
@@ -1159,7 +1165,7 @@ impl<T, A: Allocator> Arc<T, A> {
     }
 }
 
-impl<T> Arc<[T]> {
+impl<T: Leak> Arc<[T]> {
     /// Constructs a new atomically reference-counted slice with uninitialized contents.
     ///
     /// # Examples
@@ -1247,7 +1253,7 @@ impl<T> Arc<[T]> {
     }
 }
 
-impl<T, A: Allocator> Arc<[T], A> {
+impl<T: Leak, A: Allocator> Arc<[T], A> {
     /// Constructs a new atomically reference-counted slice with uninitialized contents in the
     /// provided allocator.
     ///
@@ -1321,7 +1327,7 @@ impl<T, A: Allocator> Arc<[T], A> {
     }
 }
 
-impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
+impl<T: Leak, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
     /// Converts to `Arc<T>`.
     ///
     /// # Safety
@@ -1359,7 +1365,7 @@ impl<T, A: Allocator> Arc<mem::MaybeUninit<T>, A> {
     }
 }
 
-impl<T, A: Allocator> Arc<[mem::MaybeUninit<T>], A> {
+impl<T: Leak, A: Allocator> Arc<[mem::MaybeUninit<T>], A> {
     /// Converts to `Arc<[T]>`.
     ///
     /// # Safety
@@ -1400,7 +1406,7 @@ impl<T, A: Allocator> Arc<[mem::MaybeUninit<T>], A> {
     }
 }
 
-impl<T: ?Sized> Arc<T> {
+impl<T: ?Sized + Leak> Arc<T> {
     /// Constructs an `Arc<T>` from a raw pointer.
     ///
     /// The raw pointer must have been previously returned by a call to
@@ -1547,7 +1553,7 @@ impl<T: ?Sized> Arc<T> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Arc<T, A> {
     /// Returns a reference to the underlying allocator.
     ///
     /// Note: this is an associated function, which means that you have
@@ -1968,7 +1974,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
     }
 }
 
-impl<T: ?Sized> Arc<T> {
+impl<T: ?Sized + Leak> Arc<T> {
     /// Allocates an `ArcInner<T>` with sufficient space for
     /// a possibly-unsized inner value where the value has the layout provided.
     ///
@@ -2024,7 +2030,7 @@ impl<T: ?Sized> Arc<T> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Arc<T, A> {
     /// Allocates an `ArcInner<T>` with sufficient space for an unsized inner value.
     #[inline]
     #[cfg(not(no_global_oom_handling))]
@@ -2062,7 +2068,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
     }
 }
 
-impl<T> Arc<[T]> {
+impl<T: Leak> Arc<[T]> {
     /// Allocates an `ArcInner<[T]>` with the given length.
     #[cfg(not(no_global_oom_handling))]
     unsafe fn allocate_for_slice(len: usize) -> *mut ArcInner<[T]> {
@@ -2139,7 +2145,7 @@ impl<T> Arc<[T]> {
     }
 }
 
-impl<T, A: Allocator> Arc<[T], A> {
+impl<T: Leak, A: Allocator> Arc<[T], A> {
     /// Allocates an `ArcInner<[T]>` with the given length.
     #[inline]
     #[cfg(not(no_global_oom_handling))]
@@ -2161,7 +2167,7 @@ trait ArcFromSlice<T> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: Clone> ArcFromSlice<T> for Arc<[T]> {
+impl<T: Clone + Leak> ArcFromSlice<T> for Arc<[T]> {
     #[inline]
     default fn from_slice(v: &[T]) -> Self {
         unsafe { Self::from_iter_exact(v.iter().cloned(), v.len()) }
@@ -2169,7 +2175,7 @@ impl<T: Clone> ArcFromSlice<T> for Arc<[T]> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: Copy> ArcFromSlice<T> for Arc<[T]> {
+impl<T: Copy + Leak> ArcFromSlice<T> for Arc<[T]> {
     #[inline]
     fn from_slice(v: &[T]) -> Self {
         unsafe { Arc::copy_from_slice(v) }
@@ -2177,7 +2183,7 @@ impl<T: Copy> ArcFromSlice<T> for Arc<[T]> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized, A: Allocator + Clone> Clone for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator + Clone> Clone for Arc<T, A> {
     /// Makes a clone of the `Arc` pointer.
     ///
     /// This creates another pointer to the same allocation, increasing the
@@ -2231,10 +2237,10 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Arc<T, A> {
 }
 
 #[unstable(feature = "ergonomic_clones", issue = "132290")]
-impl<T: ?Sized, A: Allocator + Clone> UseCloned for Arc<T, A> {}
+impl<T: ?Sized + Leak, A: Allocator + Clone> UseCloned for Arc<T, A> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized, A: Allocator> Deref for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Deref for Arc<T, A> {
     type Target = T;
 
     #[inline]
@@ -2244,19 +2250,19 @@ impl<T: ?Sized, A: Allocator> Deref for Arc<T, A> {
 }
 
 #[unstable(feature = "pin_coerce_unsized_trait", issue = "123430")]
-unsafe impl<T: ?Sized, A: Allocator> PinCoerceUnsized for Arc<T, A> {}
+unsafe impl<T: ?Sized + Leak, A: Allocator> PinCoerceUnsized for Arc<T, A> {}
 
 #[unstable(feature = "pin_coerce_unsized_trait", issue = "123430")]
-unsafe impl<T: ?Sized, A: Allocator> PinCoerceUnsized for Weak<T, A> {}
+unsafe impl<T: ?Sized + Leak, A: Allocator> PinCoerceUnsized for Weak<T, A> {}
 
 #[unstable(feature = "deref_pure_trait", issue = "87121")]
-unsafe impl<T: ?Sized, A: Allocator> DerefPure for Arc<T, A> {}
+unsafe impl<T: ?Sized + Leak, A: Allocator> DerefPure for Arc<T, A> {}
 
 #[unstable(feature = "legacy_receiver_trait", issue = "none")]
-impl<T: ?Sized> LegacyReceiver for Arc<T> {}
+impl<T: ?Sized + Leak> LegacyReceiver for Arc<T> {}
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Arc<T, A> {
+impl<T: ?Sized + Leak + CloneToUninit, A: Allocator + Clone> Arc<T, A> {
     /// Makes a mutable reference into the given `Arc`.
     ///
     /// If there are other `Arc` pointers to the same allocation, then `make_mut` will
@@ -2360,7 +2366,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Arc<T, A> {
                 UniqueArcUninit::new(&**this, this.alloc.clone());
             unsafe {
                 // Initialize `in_progress` with move of **this.
-                // We have to express this in terms of bytes because `T: ?Sized`; there is no
+                // We have to express this in terms of bytes because `T: ?Sized + Leak`; there is no
                 // operation that just copies a value based on its `size_of_val()`.
                 ptr::copy_nonoverlapping(
                     ptr::from_ref(&**this).cast::<u8>(),
@@ -2382,7 +2388,7 @@ impl<T: ?Sized + CloneToUninit, A: Allocator + Clone> Arc<T, A> {
     }
 }
 
-impl<T: Clone, A: Allocator> Arc<T, A> {
+impl<T: Clone + Leak, A: Allocator> Arc<T, A> {
     /// If we have the only reference to `T` then unwrap it. Otherwise, clone `T` and return the
     /// clone.
     ///
@@ -2418,7 +2424,7 @@ impl<T: Clone, A: Allocator> Arc<T, A> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Arc<T, A> {
     /// Returns a mutable reference into the given `Arc`, if there are
     /// no other `Arc` or [`Weak`] pointers to the same allocation.
     ///
@@ -2556,7 +2562,7 @@ impl<T: ?Sized, A: Allocator> Arc<T, A> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for Arc<T, A> {
+unsafe impl<#[may_dangle] T: ?Sized + Leak, A: Allocator> Drop for Arc<T, A> {
     /// Drops the `Arc`.
     ///
     /// This will decrement the strong reference count. If the strong reference
@@ -2635,8 +2641,8 @@ unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for Arc<T, A> {
     }
 }
 
-impl<A: Allocator> Arc<dyn Any + Send + Sync, A> {
-    /// Attempts to downcast the `Arc<dyn Any + Send + Sync>` to a concrete type.
+impl<A: Allocator> Arc<dyn Any + Send + Sync + Leak, A> {
+    /// Attempts to downcast the `Arc<dyn Any + Send + Sync + Leak>` to a concrete type.
     ///
     /// # Examples
     ///
@@ -2658,7 +2664,7 @@ impl<A: Allocator> Arc<dyn Any + Send + Sync, A> {
     #[stable(feature = "rc_downcast", since = "1.29.0")]
     pub fn downcast<T>(self) -> Result<Arc<T, A>, Self>
     where
-        T: Any + Send + Sync,
+        T: Any + Send + Sync + Leak,
     {
         if (*self).is::<T>() {
             unsafe {
@@ -2700,7 +2706,7 @@ impl<A: Allocator> Arc<dyn Any + Send + Sync, A> {
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     pub unsafe fn downcast_unchecked<T>(self) -> Arc<T, A>
     where
-        T: Any + Send + Sync,
+        T: Any + Send + Sync + Leak,
     {
         unsafe {
             let (ptr, alloc) = Arc::into_inner_with_allocator(self);
@@ -2709,7 +2715,7 @@ impl<A: Allocator> Arc<dyn Any + Send + Sync, A> {
     }
 }
 
-impl<T> Weak<T> {
+impl<T: Leak> Weak<T> {
     /// Constructs a new `Weak<T>`, without allocating any memory.
     /// Calling [`upgrade`] on the return value always gives [`None`].
     ///
@@ -2732,7 +2738,7 @@ impl<T> Weak<T> {
     }
 }
 
-impl<T, A: Allocator> Weak<T, A> {
+impl<T: Leak, A: Allocator> Weak<T, A> {
     /// Constructs a new `Weak<T, A>`, without allocating any memory, technically in the provided
     /// allocator.
     /// Calling [`upgrade`] on the return value always gives [`None`].
@@ -2764,7 +2770,7 @@ struct WeakInner<'a> {
     strong: &'a atomic::AtomicUsize,
 }
 
-impl<T: ?Sized> Weak<T> {
+impl<T: ?Sized + Leak> Weak<T> {
     /// Converts a raw pointer previously created by [`into_raw`] back into `Weak<T>`.
     ///
     /// This can be used to safely get a strong reference (by calling [`upgrade`]
@@ -2813,7 +2819,7 @@ impl<T: ?Sized> Weak<T> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Weak<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Weak<T, A> {
     /// Returns a reference to the underlying allocator.
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
@@ -2999,7 +3005,7 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> Weak<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Weak<T, A> {
     /// Attempts to upgrade the `Weak` pointer to an [`Arc`], delaying
     /// dropping of the inner value if successful.
     ///
@@ -3163,7 +3169,7 @@ impl<T: ?Sized, A: Allocator> Weak<T, A> {
 }
 
 #[stable(feature = "arc_weak", since = "1.4.0")]
-impl<T: ?Sized, A: Allocator + Clone> Clone for Weak<T, A> {
+impl<T: ?Sized + Leak, A: Allocator + Clone> Clone for Weak<T, A> {
     /// Makes a clone of the `Weak` pointer that points to the same allocation.
     ///
     /// # Examples
@@ -3195,10 +3201,10 @@ impl<T: ?Sized, A: Allocator + Clone> Clone for Weak<T, A> {
 }
 
 #[unstable(feature = "ergonomic_clones", issue = "132290")]
-impl<T: ?Sized, A: Allocator + Clone> UseCloned for Weak<T, A> {}
+impl<T: ?Sized + Leak, A: Allocator + Clone> UseCloned for Weak<T, A> {}
 
 #[stable(feature = "downgraded_weak", since = "1.10.0")]
-impl<T> Default for Weak<T> {
+impl<T: Leak> Default for Weak<T> {
     /// Constructs a new `Weak<T>`, without allocating memory.
     /// Calling [`upgrade`] on the return value always
     /// gives [`None`].
@@ -3219,7 +3225,7 @@ impl<T> Default for Weak<T> {
 }
 
 #[stable(feature = "arc_weak", since = "1.4.0")]
-unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for Weak<T, A> {
+unsafe impl<#[may_dangle] T: ?Sized + Leak, A: Allocator> Drop for Weak<T, A> {
     /// Drops the `Weak` pointer.
     ///
     /// # Examples
@@ -3274,13 +3280,13 @@ unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for Weak<T, A> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-trait ArcEqIdent<T: ?Sized + PartialEq, A: Allocator> {
+trait ArcEqIdent<T: ?Sized + Leak + PartialEq, A: Allocator> {
     fn eq(&self, other: &Arc<T, A>) -> bool;
     fn ne(&self, other: &Arc<T, A>) -> bool;
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + PartialEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, A> {
+impl<T: ?Sized + Leak + PartialEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, A> {
     #[inline]
     default fn eq(&self, other: &Arc<T, A>) -> bool {
         **self == **other
@@ -3299,7 +3305,7 @@ impl<T: ?Sized + PartialEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, A> {
 ///
 /// We can only do this when `T: Eq` as a `PartialEq` might be deliberately irreflexive.
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + crate::rc::MarkerEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, A> {
+impl<T: ?Sized + Leak + crate::rc::MarkerEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, A> {
     #[inline]
     fn eq(&self, other: &Arc<T, A>) -> bool {
         Arc::ptr_eq(self, other) || **self == **other
@@ -3312,7 +3318,7 @@ impl<T: ?Sized + crate::rc::MarkerEq, A: Allocator> ArcEqIdent<T, A> for Arc<T, 
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for Arc<T, A> {
+impl<T: ?Sized + Leak + PartialEq, A: Allocator> PartialEq for Arc<T, A> {
     /// Equality for two `Arc`s.
     ///
     /// Two `Arc`s are equal if their inner values are equal, even if they are
@@ -3358,7 +3364,7 @@ impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for Arc<T, A> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + PartialOrd, A: Allocator> PartialOrd for Arc<T, A> {
+impl<T: ?Sized + Leak + PartialOrd, A: Allocator> PartialOrd for Arc<T, A> {
     /// Partial comparison for two `Arc`s.
     ///
     /// The two are compared by calling `partial_cmp()` on their inner values.
@@ -3446,7 +3452,7 @@ impl<T: ?Sized + PartialOrd, A: Allocator> PartialOrd for Arc<T, A> {
     }
 }
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Ord, A: Allocator> Ord for Arc<T, A> {
+impl<T: ?Sized + Leak + Ord, A: Allocator> Ord for Arc<T, A> {
     /// Comparison for two `Arc`s.
     ///
     /// The two are compared by calling `cmp()` on their inner values.
@@ -3466,24 +3472,24 @@ impl<T: ?Sized + Ord, A: Allocator> Ord for Arc<T, A> {
     }
 }
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Eq, A: Allocator> Eq for Arc<T, A> {}
+impl<T: ?Sized + Leak + Eq, A: Allocator> Eq for Arc<T, A> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + fmt::Display, A: Allocator> fmt::Display for Arc<T, A> {
+impl<T: ?Sized + Leak + fmt::Display, A: Allocator> fmt::Display for Arc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + fmt::Debug, A: Allocator> fmt::Debug for Arc<T, A> {
+impl<T: ?Sized + Leak + fmt::Debug, A: Allocator> fmt::Debug for Arc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized, A: Allocator> fmt::Pointer for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> fmt::Pointer for Arc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Pointer::fmt(&(&raw const **self), f)
     }
@@ -3491,7 +3497,7 @@ impl<T: ?Sized, A: Allocator> fmt::Pointer for Arc<T, A> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: Default> Default for Arc<T> {
+impl<T: Default + Leak> Default for Arc<T> {
     /// Creates a new `Arc<T>`, with the `Default` value for `T`.
     ///
     /// # Examples
@@ -3577,7 +3583,7 @@ impl Default for Arc<core::ffi::CStr> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "more_rc_default_impls", since = "1.80.0")]
-impl<T> Default for Arc<[T]> {
+impl<T: Leak> Default for Arc<[T]> {
     /// Creates an empty `[T]` inside an Arc
     ///
     /// This may or may not share an allocation with other Arcs.
@@ -3603,7 +3609,7 @@ impl<T> Default for Arc<[T]> {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized + Hash, A: Allocator> Hash for Arc<T, A> {
+impl<T: ?Sized + Leak + Hash, A: Allocator> Hash for Arc<T, A> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (**self).hash(state)
     }
@@ -3611,7 +3617,7 @@ impl<T: ?Sized + Hash, A: Allocator> Hash for Arc<T, A> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "from_for_ptrs", since = "1.6.0")]
-impl<T> From<T> for Arc<T> {
+impl<T: Leak> From<T> for Arc<T> {
     /// Converts a `T` into an `Arc<T>`
     ///
     /// The conversion moves the value into a
@@ -3633,7 +3639,7 @@ impl<T> From<T> for Arc<T> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_array", since = "1.74.0")]
-impl<T, const N: usize> From<[T; N]> for Arc<[T]> {
+impl<T: Leak, const N: usize> From<[T; N]> for Arc<[T]> {
     /// Converts a [`[T; N]`](prim@array) into an `Arc<[T]>`.
     ///
     /// The conversion moves the array into a newly allocated `Arc`.
@@ -3654,7 +3660,7 @@ impl<T, const N: usize> From<[T; N]> for Arc<[T]> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_slice", since = "1.21.0")]
-impl<T: Clone> From<&[T]> for Arc<[T]> {
+impl<T: Clone + Leak> From<&[T]> for Arc<[T]> {
     /// Allocates a reference-counted slice and fills it by cloning `v`'s items.
     ///
     /// # Example
@@ -3673,7 +3679,7 @@ impl<T: Clone> From<&[T]> for Arc<[T]> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_mut_slice", since = "1.84.0")]
-impl<T: Clone> From<&mut [T]> for Arc<[T]> {
+impl<T: Clone + Leak> From<&mut [T]> for Arc<[T]> {
     /// Allocates a reference-counted slice and fills it by cloning `v`'s items.
     ///
     /// # Example
@@ -3751,7 +3757,7 @@ impl From<String> for Arc<str> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_slice", since = "1.21.0")]
-impl<T: ?Sized, A: Allocator> From<Box<T, A>> for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> From<Box<T, A>> for Arc<T, A> {
     /// Move a boxed object to a new, reference-counted allocation.
     ///
     /// # Example
@@ -3770,7 +3776,7 @@ impl<T: ?Sized, A: Allocator> From<Box<T, A>> for Arc<T, A> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_slice", since = "1.21.0")]
-impl<T, A: Allocator + Clone> From<Vec<T, A>> for Arc<[T], A> {
+impl<T: Leak, A: Allocator + Clone> From<Vec<T, A>> for Arc<[T], A> {
     /// Allocates a reference-counted slice and moves `v`'s items into it.
     ///
     /// # Example
@@ -3799,7 +3805,7 @@ impl<T, A: Allocator + Clone> From<Vec<T, A>> for Arc<[T], A> {
 }
 
 #[stable(feature = "shared_from_cow", since = "1.45.0")]
-impl<'a, B> From<Cow<'a, B>> for Arc<B>
+impl<'a, B: Leak> From<Cow<'a, B>> for Arc<B>
 where
     B: ToOwned + ?Sized,
     Arc<B>: From<&'a B> + From<B::Owned>,
@@ -3845,7 +3851,7 @@ impl From<Arc<str>> for Arc<[u8]> {
 }
 
 #[stable(feature = "boxed_slice_try_from", since = "1.43.0")]
-impl<T, A: Allocator, const N: usize> TryFrom<Arc<[T], A>> for Arc<[T; N], A> {
+impl<T: Leak, A: Allocator, const N: usize> TryFrom<Arc<[T], A>> for Arc<[T; N], A> {
     type Error = Arc<[T], A>;
 
     fn try_from(boxed_slice: Arc<[T], A>) -> Result<Self, Self::Error> {
@@ -3860,7 +3866,7 @@ impl<T, A: Allocator, const N: usize> TryFrom<Arc<[T], A>> for Arc<[T; N], A> {
 
 #[cfg(not(no_global_oom_handling))]
 #[stable(feature = "shared_from_iter", since = "1.37.0")]
-impl<T> FromIterator<T> for Arc<[T]> {
+impl<T: Leak> FromIterator<T> for Arc<[T]> {
     /// Takes each element in the `Iterator` and collects it into an `Arc<[T]>`.
     ///
     /// # Performance characteristics
@@ -3906,19 +3912,19 @@ impl<T> FromIterator<T> for Arc<[T]> {
 
 #[cfg(not(no_global_oom_handling))]
 /// Specialization trait used for collecting into `Arc<[T]>`.
-trait ToArcSlice<T>: Iterator<Item = T> + Sized {
+trait ToArcSlice<T: Leak>: Iterator<Item = T> + Sized {
     fn to_arc_slice(self) -> Arc<[T]>;
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T, I: Iterator<Item = T>> ToArcSlice<T> for I {
+impl<T: Leak, I: Iterator<Item = T>> ToArcSlice<T> for I {
     default fn to_arc_slice(self) -> Arc<[T]> {
         self.collect::<Vec<T>>().into()
     }
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T, I: iter::TrustedLen<Item = T>> ToArcSlice<T> for I {
+impl<T: Leak, I: iter::TrustedLen<Item = T>> ToArcSlice<T> for I {
     fn to_arc_slice(self) -> Arc<[T]> {
         // This is the case for a `TrustedLen` iterator.
         let (low, high) = self.size_hint();
@@ -3945,21 +3951,21 @@ impl<T, I: iter::TrustedLen<Item = T>> ToArcSlice<T> for I {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-impl<T: ?Sized, A: Allocator> borrow::Borrow<T> for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> borrow::Borrow<T> for Arc<T, A> {
     fn borrow(&self) -> &T {
         &**self
     }
 }
 
 #[stable(since = "1.5.0", feature = "smart_ptr_as_ref")]
-impl<T: ?Sized, A: Allocator> AsRef<T> for Arc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> AsRef<T> for Arc<T, A> {
     fn as_ref(&self) -> &T {
         &**self
     }
 }
 
 #[stable(feature = "pin", since = "1.33.0")]
-impl<T: ?Sized, A: Allocator> Unpin for Arc<T, A> {}
+impl<T: ?Sized + Leak, A: Allocator> Unpin for Arc<T, A> {}
 
 /// Gets the offset within an `ArcInner` for the payload behind a pointer.
 ///
@@ -3967,7 +3973,7 @@ impl<T: ?Sized, A: Allocator> Unpin for Arc<T, A> {}
 ///
 /// The pointer must point to (and have valid metadata for) a previously
 /// valid instance of T, but the T is allowed to be dropped.
-unsafe fn data_offset<T: ?Sized>(ptr: *const T) -> usize {
+unsafe fn data_offset<T: ?Sized + Leak>(ptr: *const T) -> usize {
     // Align the unsized value to the end of the ArcInner.
     // Because RcInner is repr(C), it will always be the last field in memory.
     // SAFETY: since the only unsized types possible are slices, trait objects,
@@ -3988,14 +3994,14 @@ fn data_offset_align(align: usize) -> usize {
 ///
 /// This is a helper for [`Arc::make_mut()`] to ensure correct cleanup on panic.
 #[cfg(not(no_global_oom_handling))]
-struct UniqueArcUninit<T: ?Sized, A: Allocator> {
+struct UniqueArcUninit<T: ?Sized + Leak, A: Allocator> {
     ptr: NonNull<ArcInner<T>>,
     layout_for_value: Layout,
     alloc: Option<A>,
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized, A: Allocator> UniqueArcUninit<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> UniqueArcUninit<T, A> {
     /// Allocates an ArcInner with layout suitable to contain `for_value` or a clone of it.
     fn new(for_value: &T, alloc: A) -> UniqueArcUninit<T, A> {
         let layout = Layout::for_value(for_value);
@@ -4032,7 +4038,7 @@ impl<T: ?Sized, A: Allocator> UniqueArcUninit<T, A> {
 }
 
 #[cfg(not(no_global_oom_handling))]
-impl<T: ?Sized, A: Allocator> Drop for UniqueArcUninit<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Drop for UniqueArcUninit<T, A> {
     fn drop(&mut self) {
         // SAFETY:
         // * new() produced a pointer safe to deallocate.
@@ -4047,7 +4053,7 @@ impl<T: ?Sized, A: Allocator> Drop for UniqueArcUninit<T, A> {
 }
 
 #[stable(feature = "arc_error", since = "1.52.0")]
-impl<T: core::error::Error + ?Sized> core::error::Error for Arc<T> {
+impl<T: core::error::Error + ?Sized + Leak> core::error::Error for Arc<T> {
     #[allow(deprecated, deprecated_in_future)]
     fn description(&self) -> &str {
         core::error::Error::description(&**self)
@@ -4104,7 +4110,7 @@ impl<T: core::error::Error + ?Sized> core::error::Error for Arc<T> {
 /// including fallible or async constructors.
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
 pub struct UniqueArc<
-    T: ?Sized,
+    T: ?Sized + Leak,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
 > {
     ptr: NonNull<ArcInner<T>>,
@@ -4117,76 +4123,79 @@ pub struct UniqueArc<
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Send> Send for UniqueArc<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Send> Send for UniqueArc<T, A> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-unsafe impl<T: ?Sized + Sync + Send, A: Allocator + Sync> Sync for UniqueArc<T, A> {}
+unsafe impl<T: ?Sized + Leak + Sync + Send, A: Allocator + Sync> Sync for UniqueArc<T, A> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
 // #[unstable(feature = "coerce_unsized", issue = "18598")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized, A: Allocator> CoerceUnsized<UniqueArc<U, A>>
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak, A: Allocator> CoerceUnsized<UniqueArc<U, A>>
     for UniqueArc<T, A>
 {
 }
 
 //#[unstable(feature = "unique_rc_arc", issue = "112566")]
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
-impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<UniqueArc<U>> for UniqueArc<T> {}
+impl<T: ?Sized + Leak + Unsize<U>, U: ?Sized + Leak> DispatchFromDyn<UniqueArc<U>>
+    for UniqueArc<T>
+{
+}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + fmt::Display, A: Allocator> fmt::Display for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + fmt::Display, A: Allocator> fmt::Display for UniqueArc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&**self, f)
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + fmt::Debug, A: Allocator> fmt::Debug for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + fmt::Debug, A: Allocator> fmt::Debug for UniqueArc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> fmt::Pointer for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> fmt::Pointer for UniqueArc<T, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Pointer::fmt(&(&raw const **self), f)
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> borrow::Borrow<T> for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> borrow::Borrow<T> for UniqueArc<T, A> {
     fn borrow(&self) -> &T {
         &**self
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> borrow::BorrowMut<T> for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> borrow::BorrowMut<T> for UniqueArc<T, A> {
     fn borrow_mut(&mut self) -> &mut T {
         &mut **self
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> AsRef<T> for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> AsRef<T> for UniqueArc<T, A> {
     fn as_ref(&self) -> &T {
         &**self
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> AsMut<T> for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> AsMut<T> for UniqueArc<T, A> {
     fn as_mut(&mut self) -> &mut T {
         &mut **self
     }
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> Unpin for UniqueArc<T, A> {}
+impl<T: ?Sized + Leak, A: Allocator> Unpin for UniqueArc<T, A> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + PartialEq, A: Allocator> PartialEq for UniqueArc<T, A> {
     /// Equality for two `UniqueArc`s.
     ///
     /// Two `UniqueArc`s are equal if their inner values are equal.
@@ -4208,7 +4217,7 @@ impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for UniqueArc<T, A> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + PartialOrd, A: Allocator> PartialOrd for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + PartialOrd, A: Allocator> PartialOrd for UniqueArc<T, A> {
     /// Partial comparison for two `UniqueArc`s.
     ///
     /// The two are compared by calling `partial_cmp()` on their inner values.
@@ -4307,7 +4316,7 @@ impl<T: ?Sized + PartialOrd, A: Allocator> PartialOrd for UniqueArc<T, A> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + Ord, A: Allocator> Ord for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + Ord, A: Allocator> Ord for UniqueArc<T, A> {
     /// Comparison for two `UniqueArc`s.
     ///
     /// The two are compared by calling `cmp()` on their inner values.
@@ -4330,16 +4339,16 @@ impl<T: ?Sized + Ord, A: Allocator> Ord for UniqueArc<T, A> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + Eq, A: Allocator> Eq for UniqueArc<T, A> {}
+impl<T: ?Sized + Leak + Eq, A: Allocator> Eq for UniqueArc<T, A> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized + Hash, A: Allocator> Hash for UniqueArc<T, A> {
+impl<T: ?Sized + Leak + Hash, A: Allocator> Hash for UniqueArc<T, A> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (**self).hash(state);
     }
 }
 
-impl<T> UniqueArc<T, Global> {
+impl<T: Leak> UniqueArc<T, Global> {
     /// Creates a new `UniqueArc`.
     ///
     /// Weak references to this `UniqueArc` can be created with [`UniqueArc::downgrade`]. Upgrading
@@ -4354,7 +4363,7 @@ impl<T> UniqueArc<T, Global> {
     }
 }
 
-impl<T, A: Allocator> UniqueArc<T, A> {
+impl<T: Leak, A: Allocator> UniqueArc<T, A> {
     /// Creates a new `UniqueArc` in the provided allocator.
     ///
     /// Weak references to this `UniqueArc` can be created with [`UniqueArc::downgrade`]. Upgrading
@@ -4380,7 +4389,7 @@ impl<T, A: Allocator> UniqueArc<T, A> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> UniqueArc<T, A> {
     /// Converts the `UniqueArc` into a regular [`Arc`].
     ///
     /// This consumes the `UniqueArc` and returns a regular [`Arc`] that contains the `value` that
@@ -4407,7 +4416,7 @@ impl<T: ?Sized, A: Allocator> UniqueArc<T, A> {
     }
 }
 
-impl<T: ?Sized, A: Allocator + Clone> UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator + Clone> UniqueArc<T, A> {
     /// Creates a new weak reference to the `UniqueArc`.
     ///
     /// Attempting to upgrade this weak reference will fail before the `UniqueArc` has been converted
@@ -4436,7 +4445,7 @@ impl<T: ?Sized, A: Allocator + Clone> UniqueArc<T, A> {
 }
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> Deref for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> Deref for UniqueArc<T, A> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -4447,10 +4456,10 @@ impl<T: ?Sized, A: Allocator> Deref for UniqueArc<T, A> {
 
 // #[unstable(feature = "unique_rc_arc", issue = "112566")]
 #[unstable(feature = "pin_coerce_unsized_trait", issue = "123430")]
-unsafe impl<T: ?Sized> PinCoerceUnsized for UniqueArc<T> {}
+unsafe impl<T: ?Sized + Leak> PinCoerceUnsized for UniqueArc<T> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-impl<T: ?Sized, A: Allocator> DerefMut for UniqueArc<T, A> {
+impl<T: ?Sized + Leak, A: Allocator> DerefMut for UniqueArc<T, A> {
     fn deref_mut(&mut self) -> &mut T {
         // SAFETY: This pointer was allocated at creation time so we know it is valid. We know we
         // have unique ownership and therefore it's safe to make a mutable reference because
@@ -4464,10 +4473,10 @@ impl<T: ?Sized, A: Allocator> DerefMut for UniqueArc<T, A> {
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
 // #[unstable(feature = "deref_pure_trait", issue = "87121")]
-unsafe impl<T: ?Sized, A: Allocator> DerefPure for UniqueArc<T, A> {}
+unsafe impl<T: ?Sized + Leak, A: Allocator> DerefPure for UniqueArc<T, A> {}
 
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
-unsafe impl<#[may_dangle] T: ?Sized, A: Allocator> Drop for UniqueArc<T, A> {
+unsafe impl<#[may_dangle] T: ?Sized + Leak, A: Allocator> Drop for UniqueArc<T, A> {
     fn drop(&mut self) {
         // See `Arc::drop_slow` which drops an `Arc` with a strong count of 0.
         // SAFETY: This pointer was allocated at creation time so we know it is valid.

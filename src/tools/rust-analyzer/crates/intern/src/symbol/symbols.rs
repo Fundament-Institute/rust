@@ -314,6 +314,7 @@ define_symbols! {
     keyword,
     lang,
     le,
+    leak,
     Left,
     len,
     line,

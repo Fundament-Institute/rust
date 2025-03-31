@@ -878,6 +878,20 @@ marker_impls! {
         {T: ?Sized} &mut T,
 }
 
+/// Types that can be leaked.
+///
+/// By default, all types in Rust can be leaked. This trait allows creating types that *cannot*
+/// be leaked, meaning the compiler must statically verify that the destructor will always be
+/// run. This is enforced by a [`Leak`] bound on all functions that could potentially leak the
+/// memory and fail to run the constructor, which is basically [`mem::forget`], [`rc::Rc`], and [`sync::Arc`] (since
+/// you can construct [`mem::forget`] using a reference cycle).
+///
+/// This trait is irrelevent for safe rust, it only affects unsafe rust operating on proxy
+/// types that run important cleanup code upon their destruction, such as a lock guard.
+#[unstable(feature = "leak", issue = "none")]
+//#[lang = "leak"]
+pub auto trait Leak {}
+
 /// Types that do not require any pinning guarantees.
 ///
 /// For information on what "pinning" is, see the [`pin` module] documentation.

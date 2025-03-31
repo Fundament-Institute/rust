@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::ffi::{CStr, CString};
+use std::marker::Leak;
 use std::rc::Rc;
 
 use crate::{ConcatTreesHelper, Group, Ident, Literal, Punct, Span, TokenStream, TokenTree};
@@ -146,7 +147,7 @@ impl<T: ToTokens + ?Sized> ToTokens for Box<T> {
 }
 
 #[unstable(feature = "proc_macro_totokens", issue = "130977")]
-impl<T: ToTokens + ?Sized> ToTokens for Rc<T> {
+impl<T: ToTokens + ?Sized + Leak> ToTokens for Rc<T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         (**self).to_tokens(tokens)
     }

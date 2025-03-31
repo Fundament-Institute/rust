@@ -7,6 +7,7 @@
 //! This may be detected at compile time using
 //! `#[cfg(target_has_atomic = "ptr")]`.
 
+use core::marker::Leak;
 use core::mem::ManuallyDrop;
 #[cfg(target_has_atomic = "ptr")]
 use core::task::Waker;
@@ -87,7 +88,7 @@ use crate::sync::Arc;
 /// ```
 #[cfg(target_has_atomic = "ptr")]
 #[stable(feature = "wake_trait", since = "1.51.0")]
-pub trait Wake {
+pub trait Wake: Leak {
     /// Wake this task.
     #[stable(feature = "wake_trait", since = "1.51.0")]
     fn wake(self: Arc<Self>);
@@ -266,7 +267,7 @@ fn raw_waker<W: Wake + Send + Sync + 'static>(waker: Arc<W>) -> RawWaker {
 /// ```
 ///
 #[unstable(feature = "local_waker", issue = "118959")]
-pub trait LocalWake {
+pub trait LocalWake: Leak {
     /// Wake this task.
     #[unstable(feature = "local_waker", issue = "118959")]
     fn wake(self: Rc<Self>);

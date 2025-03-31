@@ -6,7 +6,7 @@ use std::sync::mpsc::channel;
 use std::sync::{Arc, Condvar, MappedMutexGuard, Mutex, MutexGuard, TryLockError};
 use std::{hint, mem, thread};
 
-struct Packet<T>(Arc<(Mutex<T>, Condvar)>);
+struct Packet<T: std::marker::Leak>(Arc<(Mutex<T>, Condvar)>);
 
 #[derive(Eq, PartialEq, Debug)]
 struct NonCopy(i32);

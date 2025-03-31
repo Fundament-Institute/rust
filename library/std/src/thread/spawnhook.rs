@@ -1,3 +1,5 @@
+use core::marker::Leak;
+
 use crate::cell::Cell;
 use crate::iter;
 use crate::sync::Arc;
@@ -29,7 +31,7 @@ impl Drop for SpawnHooks {
 }
 
 struct SpawnHook {
-    hook: Box<dyn Send + Sync + Fn(&Thread) -> Box<dyn Send + FnOnce()>>,
+    hook: Box<dyn Leak + Send + Sync + Fn(&Thread) -> Box<dyn Send + FnOnce()>>,
     next: Option<Arc<SpawnHook>>,
 }
 
@@ -91,7 +93,7 @@ struct SpawnHook {
 #[unstable(feature = "thread_spawn_hook", issue = "132951")]
 pub fn add_spawn_hook<F, G>(hook: F)
 where
-    F: 'static + Send + Sync + Fn(&Thread) -> G,
+    F: 'static + Leak + Send + Sync + Fn(&Thread) -> G,
     G: 'static + Send + FnOnce(),
 {
     SPAWN_HOOKS.with(|h| {

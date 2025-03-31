@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::fmt;
+use std::marker::Leak;
 use std::sync::mpsc::Sender;
 
 pub use NamePadding::*;
@@ -85,9 +86,9 @@ pub enum TestFn {
     StaticTestFn(fn() -> Result<(), String>),
     StaticBenchFn(fn(&mut Bencher) -> Result<(), String>),
     StaticBenchAsTestFn(fn(&mut Bencher) -> Result<(), String>),
-    DynTestFn(Box<dyn FnOnce() -> Result<(), String> + Send>),
-    DynBenchFn(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send>),
-    DynBenchAsTestFn(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send>),
+    DynTestFn(Box<dyn FnOnce() -> Result<(), String> + Send + Leak>),
+    DynBenchFn(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send + Leak>),
+    DynBenchAsTestFn(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send + Leak>),
 }
 
 impl TestFn {
@@ -134,9 +135,9 @@ pub(crate) enum Runnable {
 
 pub(crate) enum RunnableTest {
     Static(fn() -> Result<(), String>),
-    Dynamic(Box<dyn FnOnce() -> Result<(), String> + Send>),
+    Dynamic(Box<dyn FnOnce() -> Result<(), String> + Send + Leak>),
     StaticBenchAsTest(fn(&mut Bencher) -> Result<(), String>),
-    DynamicBenchAsTest(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send>),
+    DynamicBenchAsTest(Box<dyn Fn(&mut Bencher) -> Result<(), String> + Send + Leak>),
 }
 
 impl RunnableTest {

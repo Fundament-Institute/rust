@@ -158,6 +158,8 @@
 #[cfg(all(test, not(any(target_os = "emscripten", target_os = "wasi"))))]
 mod tests;
 
+use core::marker::Leak;
+
 use crate::any::Any;
 use crate::cell::UnsafeCell;
 use crate::ffi::CStr;
@@ -394,7 +396,7 @@ impl Builder {
     where
         F: FnOnce() -> T,
         F: Send + 'static,
-        T: Send + 'static,
+        T: Send + Leak + 'static,
     {
         unsafe { self.spawn_unchecked(f) }
     }
@@ -462,7 +464,7 @@ impl Builder {
     where
         F: FnOnce() -> T,
         F: Send,
-        T: Send,
+        T: Send + Leak,
     {
         Ok(JoinHandle(unsafe { self.spawn_unchecked_(f, None) }?))
     }
@@ -476,7 +478,7 @@ impl Builder {
     where
         F: FnOnce() -> T,
         F: Send,
-        T: Send,
+        T: Send + Leak,
     {
         let Builder { name, stack_size, no_hooks } = self;
 
@@ -724,7 +726,7 @@ pub fn spawn<F, T>(f: F) -> JoinHandle<T>
 where
     F: FnOnce() -> T,
     F: Send + 'static,
-    T: Send + 'static,
+    T: Send + 'static + Leak,
 {
     Builder::new().spawn(f).expect("failed to spawn thread")
 }
@@ -1685,19 +1687,21 @@ pub type Result<T> = crate::result::Result<T, Box<dyn Any + Send + 'static>>;
 //
 // An Arc to the packet is stored into a `JoinInner` which in turns is placed
 // in `JoinHandle`.
-struct Packet<'scope, T> {
+struct Packet<'scope, T: Leak> {
     scope: Option<Arc<scoped::ScopeData>>,
     result: UnsafeCell<Option<Result<T>>>,
     _marker: PhantomData<Option<&'scope scoped::ScopeData>>,
 }
 
+impl<T: Leak> Leak for Packet<'_, T> {}
+
 // Due to the usage of `UnsafeCell` we need to manually implement Sync.
 // The type `T` should already always be Send (otherwise the thread could not
 // have been created) and the Packet is Sync because all access to the
 // `UnsafeCell` synchronized (by the `join()` boundary), and `ScopeData` is Sync.
-unsafe impl<'scope, T: Send> Sync for Packet<'scope, T> {}
+unsafe impl<'scope, T: Send + Leak> Sync for Packet<'scope, T> {}
 
-impl<'scope, T> Drop for Packet<'scope, T> {
+impl<'scope, T: Leak> Drop for Packet<'scope, T> {
     fn drop(&mut self) {
         // If this packet was for a thread that ran in a scope, the thread
         // panicked, and nobody consumed the panic payload, we make sure
@@ -1730,13 +1734,13 @@ impl<'scope, T> Drop for Packet<'scope, T> {
 }
 
 /// Inner representation for JoinHandle
-struct JoinInner<'scope, T> {
+struct JoinInner<'scope, T: Leak> {
     native: imp::Thread,
     thread: Thread,
     packet: Arc<Packet<'scope, T>>,
 }
 
-impl<'scope, T> JoinInner<'scope, T> {
+impl<'scope, T: Leak> JoinInner<'scope, T> {
     fn join(mut self) -> Result<T> {
         self.native.join();
         Arc::get_mut(&mut self.packet)
@@ -1816,14 +1820,14 @@ impl<'scope, T> JoinInner<'scope, T> {
 /// [`thread::spawn`]: spawn
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(target_os = "teeos", must_use)]
-pub struct JoinHandle<T>(JoinInner<'static, T>);
+pub struct JoinHandle<T: Leak>(JoinInner<'static, T>);
 
 #[stable(feature = "joinhandle_impl_send_sync", since = "1.29.0")]
-unsafe impl<T> Send for JoinHandle<T> {}
+unsafe impl<T: Leak> Send for JoinHandle<T> {}
 #[stable(feature = "joinhandle_impl_send_sync", since = "1.29.0")]
-unsafe impl<T> Sync for JoinHandle<T> {}
+unsafe impl<T: Leak> Sync for JoinHandle<T> {}
 
-impl<T> JoinHandle<T> {
+impl<T: Leak> JoinHandle<T> {
     /// Extracts a handle to the underlying thread.
     ///
     /// # Examples
@@ -1912,20 +1916,20 @@ impl<T> JoinHandle<T> {
     }
 }
 
-impl<T> AsInner<imp::Thread> for JoinHandle<T> {
+impl<T: Leak> AsInner<imp::Thread> for JoinHandle<T> {
     fn as_inner(&self) -> &imp::Thread {
         &self.0.native
     }
 }
 
-impl<T> IntoInner<imp::Thread> for JoinHandle<T> {
+impl<T: Leak> IntoInner<imp::Thread> for JoinHandle<T> {
     fn into_inner(self) -> imp::Thread {
         self.0.native
     }
 }
 
 #[stable(feature = "std_debug", since = "1.16.0")]
-impl<T> fmt::Debug for JoinHandle<T> {
+impl<T: Leak> fmt::Debug for JoinHandle<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("JoinHandle").finish_non_exhaustive()
     }
