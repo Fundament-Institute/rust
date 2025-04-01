@@ -1224,6 +1224,7 @@ symbols! {
         lazy_normalization_consts,
         lazy_type_alias,
         le,
+        leak,
         legacy_receiver,
         len,
         let_chains,

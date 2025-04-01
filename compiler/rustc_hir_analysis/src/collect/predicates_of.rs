@@ -218,6 +218,13 @@ fn gather_explicit_predicates_of(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::Gen
                     Some((param.def_id, hir_generics.predicates)),
                     param.span,
                 );
+                icx.lowerer().add_leak_bound(
+                    &mut bounds,
+                    param_ty,
+                    &[],
+                    Some((param.def_id, hir_generics.predicates)),
+                    param.span,
+                );
                 trace!(?bounds);
                 predicates.extend(bounds);
                 trace!(?predicates);

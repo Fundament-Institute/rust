@@ -657,7 +657,11 @@ impl<'infcx, 'tcx> MirBorrowckCtxt<'_, 'infcx, 'tcx> {
         blamed_category: ConstraintCategory<'tcx>,
         path: &[OutlivesConstraint<'tcx>],
     ) {
-        for sought_category in [ConstraintCategory::SizedBound, ConstraintCategory::CopyBound] {
+        for sought_category in [
+            ConstraintCategory::SizedBound,
+            ConstraintCategory::CopyBound,
+            ConstraintCategory::LeakBound,
+        ] {
             if sought_category != blamed_category
                 && let Some(sought_constraint) = path.iter().find(|c| c.category == sought_category)
             {

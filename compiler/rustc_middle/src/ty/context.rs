@@ -715,6 +715,7 @@ bidirectional_lang_item_map! {
     Future,
     FutureOutput,
     Iterator,
+    Leak,
     Metadata,
     Option,
     PointeeTrait,

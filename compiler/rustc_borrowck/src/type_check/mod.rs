@@ -711,6 +711,19 @@ impl<'a, 'tcx> Visitor<'tcx> for TypeChecker<'a, 'tcx> {
                         ConstraintCategory::SizedBound,
                     );
                 }
+
+                if !self.tcx().features().leak() {
+                    let trait_ref = ty::TraitRef::new(
+                        tcx,
+                        tcx.require_lang_item(LangItem::Leak, Some(self.last_span)),
+                        [place_ty],
+                    );
+                    self.prove_trait_ref(
+                        trait_ref,
+                        location.to_locations(),
+                        ConstraintCategory::LeakBound,
+                    );
+                }
             }
             StatementKind::AscribeUserType(box (place, projection), variance) => {
                 let place_ty = place.ty(self.body, tcx).ty;

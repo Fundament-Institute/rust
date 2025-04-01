@@ -211,6 +211,7 @@ pub enum ConstraintCategory<'tcx> {
     CallArgument(Option<Ty<'tcx>>),
     CopyBound,
     SizedBound,
+    LeakBound,
     Assignment,
     /// A constraint that came from a usage of a variable (e.g. in an ADT expression
     /// like `Foo { field: my_val }`)

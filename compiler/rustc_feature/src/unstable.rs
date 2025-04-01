@@ -215,6 +215,9 @@ declare_features! (
     (internal, intrinsics, "1.0.0", None),
     /// Allows using `#[lang = ".."]` attribute for linking items to special compiler logic.
     (internal, lang_items, "1.0.0", None),
+    /// Controls awareness of the Leak trait, which determines if it is automatically
+    /// added to all trait bounds in the current crate
+    (unstable, leak, "1.86.0", None),
     /// Allows `#[link(..., cfg(..))]`; perma-unstable per #37406
     (internal, link_cfg, "1.14.0", None),
     /// Allows using `?Trait` trait bounds in more contexts.

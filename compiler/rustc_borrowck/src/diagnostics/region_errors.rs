@@ -54,6 +54,7 @@ impl<'tcx> ConstraintDescription for ConstraintCategory<'tcx> {
             ConstraintCategory::TypeAnnotation(AnnotationSource::GenericArg) => "generic argument ",
             ConstraintCategory::TypeAnnotation(_) => "type annotation ",
             ConstraintCategory::SizedBound => "proving this value is `Sized` ",
+            ConstraintCategory::LeakBound => "proving this value is `Leak` ",
             ConstraintCategory::CopyBound => "copying this value ",
             ConstraintCategory::OpaqueType => "opaque type ",
             ConstraintCategory::ClosureUpvar(_) => "closure capture ",

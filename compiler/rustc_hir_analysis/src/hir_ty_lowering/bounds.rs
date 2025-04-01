@@ -123,6 +123,55 @@ impl<'tcx> dyn HirTyLowerer<'tcx> + '_ {
         }
     }
 
+    /// Adds a `Leak` bound if the crate does not opt-in to leak-awareness
+    pub(crate) fn add_leak_bound(
+        &self,
+        bounds: &mut Vec<(ty::Clause<'tcx>, Span)>,
+        self_ty: Ty<'tcx>,
+        hir_bounds: &'tcx [hir::GenericBound<'tcx>],
+        self_ty_where_predicates: Option<(LocalDefId, &'tcx [hir::WherePredicate<'tcx>])>,
+        span: Span,
+    ) {
+        let leak_def_id = tcx.lang_items().leak_trait();
+        let mut seen_positive_leak_bound = false;
+
+        let mut search_bounds = |hir_bounds: &'tcx [hir::GenericBound<'tcx>]| {
+            for hir_bound in hir_bounds {
+                let hir::GenericBound::Trait(ptr) = hir_bound else {
+                    continue;
+                };
+                match ptr.modifiers.polarity {
+                    hir::BoundPolarity::Positive => {
+                        if let Some(leak_def_id) = leak_def_id
+                            && ptr.trait_ref.path.res == Res::Def(DefKind::Trait, leak_def_id)
+                        {
+                            seen_positive_leak_bound = true;
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        };
+        search_bounds(hir_bounds);
+        if let Some((self_ty, where_clause)) = self_ty_where_predicates {
+            for clause in where_clause {
+                if let hir::WherePredicateKind::BoundPredicate(pred) = clause.kind
+                    && pred.is_param_bound(self_ty.to_def_id())
+                {
+                    search_bounds(pred.bounds);
+                }
+            }
+        }
+
+        if seen_positive_leak_bound {
+            // There's already a positive `Leak` bound, so we don't do anything.
+        } else if let Some(leak_def_id) = leak_def_id {
+            // There was no `Leak` bound, add it if it's available
+            let trait_ref = ty::TraitRef::new(tcx, leak_def_id, [self_ty]);
+            bounds.insert(0, (trait_ref.upcast(tcx), span));
+        }
+    }
+
     /// Lower HIR bounds into `bounds` given the self type `param_ty` and the overarching late-bound vars if any.
     ///
     /// ### Examples
